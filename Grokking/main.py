@@ -22,15 +22,19 @@ def main():
     train_accs = []
     test_accs = []
 
-    train_loader, test_loader, vocab_size = build_loaders(batch_size=batch_size, n_samples=200000, max_n=112)
+    train_loader, test_loader, vocab_size = build_loaders(batch_size=batch_size, max_n=112)
 
     model = GPTDecoder(vocab_size=vocab_size, seq_len=3, embedding_dim=128, num_heads=4).to(device)
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=lr, betas=(0.9,0.95), weight_decay=1e-2)
+    optimizer = optim.AdamW(model.parameters(), lr=lr, betas=(0.9,0.95), weight_decay=1e-1)
 
     for epoch in range(epochs):
         train_loss, train_acc = train_step(model, train_loader, loss_fn, optimizer, device)
         test_loss, test_acc = test_step(test_loader, model, loss_fn, device)
+        train_losses.append(train_loss)
+        test_losses.append(test_loss)
+        train_accs.append(train_acc)
+        test_accs.append(test_acc)
         print(f"Epoch {epoch+1}/{epochs} | Train Loss: {train_loss:.6f}, Acc: {train_acc:.4f} | Test Loss: {test_loss:.6f}, Acc: {test_acc:.4f}")
 
     torch.save({"model": model.state_dict(), "vocab_size": vocab_size}, "Checkpoint/adder_gpt1.pt")
@@ -65,17 +69,15 @@ def main():
     print("Saved training_curves.png")
 
 
-
-
-def build_loaders(batch_size=64, n_samples=200000, split=0.9, max_n=112):
-    ds = AdditionDataset(n_samples=n_samples, max_n=max_n)
+def build_loaders(batch_size=256, split=0.1, max_n=112):
+    ds = AdditionDataset(max_n=max_n)
     n_train = int(len(ds) * split)
     n_test = len(ds) - n_train
     train_ds, test_ds = random_split(ds, [n_train, n_test])
-
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, drop_last=True)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, drop_last=False)
     return train_loader, test_loader, ds.vocab_size
+
 
 
 if __name__ == "__main__":
