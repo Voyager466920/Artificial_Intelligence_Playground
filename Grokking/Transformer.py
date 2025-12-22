@@ -89,20 +89,13 @@ class TransformerDecoderBlock(nn.Module):
 
         return x_residual2
 
-class GPTDecoder(nn.Module):
-    def __init__(self, vocab_size=114, seq_len=3, embedding_dim=128, num_heads=4, mlp_size=256, dropout=0.1):
+class DecoderBlock(nn.Module):
+    def __init__(self, embedding_dim: int, num_heads: int, mlp_size: int, dropout: float):
         super().__init__()
-        self.vocab_size = vocab_size
-        self.seq_len = seq_len
-
-        self.token_in = nn.Linear(vocab_size, embedding_dim, bias=False)
-
-        self.pos_emb = nn.Parameter(torch.zeros(1, seq_len, embedding_dim))
-
         self.ln1 = nn.LayerNorm(embedding_dim)
         self.attn = nn.MultiheadAttention(embedding_dim, num_heads, dropout=dropout, batch_first=True)
-        self.ln2 = nn.LayerNorm(embedding_dim)
 
+        self.ln2 = nn.LayerNorm(embedding_dim)
         self.mlp = nn.Sequential(
             nn.Linear(embedding_dim, mlp_size),
             nn.GELU(),
@@ -111,6 +104,40 @@ class GPTDecoder(nn.Module):
             nn.Dropout(dropout),
         )
 
+    def forward(self, x, causal_mask):
+        h = self.ln1(x)
+        attn_out, _ = self.attn(h, h, h, attn_mask=causal_mask, need_weights=False)
+        x = x + attn_out
+
+        h = self.ln2(x)
+        x = x + self.mlp(h)
+        return x
+
+
+class GPTDecoder(nn.Module):
+    def __init__(
+        self,
+        vocab_size=114,
+        seq_len=3,
+        embedding_dim=128,
+        num_heads=4,
+        mlp_size=256,
+        dropout=0.0,
+        num_layers=4,
+    ):
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.seq_len = seq_len
+
+        self.token_in = nn.Linear(vocab_size, embedding_dim, bias=False)
+        self.pos_emb = nn.Parameter(torch.zeros(1, seq_len, embedding_dim))
+
+        self.blocks = nn.ModuleList([
+            DecoderBlock(embedding_dim, num_heads, mlp_size, dropout)
+            for _ in range(num_layers)
+        ])
+
+        self.ln_f = nn.LayerNorm(embedding_dim)
         self.head = nn.Linear(embedding_dim, vocab_size, bias=False)
 
     def forward(self, x_onehot):
@@ -120,14 +147,14 @@ class GPTDecoder(nn.Module):
 
         x = self.token_in(x_onehot) + self.pos_emb[:, :T, :]
 
-        causal = torch.triu(torch.ones(T, T, device=x.device, dtype=torch.bool), diagonal=1)
+        causal_mask = torch.triu(
+            torch.ones(T, T, device=x.device, dtype=torch.bool),
+            diagonal=1
+        )
 
-        h = self.ln1(x)
-        attn_out, _ = self.attn(h, h, h, attn_mask=causal, need_weights=False)
-        x = x + attn_out
+        for blk in self.blocks:
+            x = blk(x, causal_mask)
 
-        h = self.ln2(x)
-        x = x + self.mlp(h)
-
+        x = self.ln_f(x)
         logits = self.head(x)
         return logits
