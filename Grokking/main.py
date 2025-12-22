@@ -24,7 +24,7 @@ def main():
 
     train_loader, test_loader, vocab_size = build_loaders(batch_size=batch_size, max_n=112)
 
-    model = GPTDecoder(vocab_size=vocab_size, seq_len=3, embedding_dim=128, num_heads=4).to(device)
+    model = GPTDecoder(vocab_size=vocab_size, seq_len=3, embedding_dim=128, num_heads=4, dropout=0.0).to(device)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=lr, betas=(0.9,0.95), weight_decay=1e-1)
 
@@ -69,7 +69,7 @@ def main():
     print("Saved training_curves.png")
 
 
-def build_loaders(batch_size=256, split=0.1, max_n=112):
+def build_loaders(batch_size=256, split=0.05, max_n=112):
     ds = AdditionDataset(max_n=max_n)
     n_train = int(len(ds) * split)
     n_test = len(ds) - n_train
