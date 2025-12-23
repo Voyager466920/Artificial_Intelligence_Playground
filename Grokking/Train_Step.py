@@ -1,28 +1,30 @@
 import torch
 
-def train_step(model, dataloader, loss_fn, optimizer, device):
+def train_step(model, dataloader, loss_fn, optimizer, scheduler, device, max_steps=None):
     model.train()
-    total_loss = 0
-    total_tokens = 0
+    total_loss = 0.0
+    total_correct = 0
+    total = 0
 
-    last_correct = 0
-    last_total = 0
+    for batch_idx, (x_ids, y) in enumerate(dataloader):
+        x_ids, y = x_ids.to(device), y.to(device)
 
-    for tokens, targets in dataloader:
-        tokens, targets = tokens.to(device), targets.to(device)
-        logits = model(tokens)
-        loss = loss_fn(logits.reshape(-1, logits.size(-1)), targets.reshape(-1))
+        logits_last = model(x_ids)            # (B,V)
+        loss = loss_fn(logits_last, y)
 
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
+        if scheduler is not None:
+            scheduler.step()
 
         with torch.no_grad():
-            preds = logits.argmax(-1)
-            total_loss += loss.item() * targets.numel()
-            total_tokens += targets.numel()
+            preds = logits_last.argmax(dim=-1)
+            total_correct += (preds == y).sum().item()
+            total += y.size(0)
+            total_loss += loss.item() * y.size(0)
 
-            last_correct += (preds[:, -1] == targets[:, -1]).sum().item()
-            last_total += targets.size(0)
+        if max_steps is not None and (batch_idx + 1) >= max_steps:
+            break
 
-    return total_loss / total_tokens, last_correct / last_total
+    return total_loss / max(total, 1), total_correct / max(total, 1)

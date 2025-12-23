@@ -89,6 +89,7 @@ class TransformerDecoderBlock(nn.Module):
 
         return x_residual2
 
+
 class DecoderBlock(nn.Module):
     def __init__(self, embedding_dim: int, num_heads: int, mlp_size: int, dropout: float):
         super().__init__()
@@ -117,20 +118,20 @@ class DecoderBlock(nn.Module):
 class GPTDecoder(nn.Module):
     def __init__(
         self,
-        vocab_size=114,
-        seq_len=3,
-        embedding_dim=128,
-        num_heads=4,
-        mlp_size=256,
-        dropout=0.0,
-        num_layers=4,
+        vocab_size: int,
+        seq_len: int = 4,
+        embedding_dim: int = 128,
+        num_heads: int = 4,
+        mlp_size: int = 512,
+        dropout: float = 0.0,
+        num_layers: int = 4,
     ):
         super().__init__()
         self.vocab_size = vocab_size
         self.seq_len = seq_len
 
-        self.token_in = nn.Linear(vocab_size, embedding_dim, bias=False)
-        self.pos_emb = nn.Parameter(torch.zeros(1, seq_len, embedding_dim))
+        self.tok_emb = nn.Embedding(vocab_size, embedding_dim)
+        self.pos_emb = nn.Embedding(seq_len, embedding_dim)
 
         self.blocks = nn.ModuleList([
             DecoderBlock(embedding_dim, num_heads, mlp_size, dropout)
@@ -140,12 +141,13 @@ class GPTDecoder(nn.Module):
         self.ln_f = nn.LayerNorm(embedding_dim)
         self.head = nn.Linear(embedding_dim, vocab_size, bias=False)
 
-    def forward(self, x_onehot):
-        B, T, V = x_onehot.shape
-        assert V == self.vocab_size
-        assert T == self.seq_len
+    def forward(self, x_ids: torch.Tensor) -> torch.Tensor:
+        # x_ids: (B,T)
+        B, T = x_ids.shape
+        assert T == self.seq_len, f"Expected seq_len={self.seq_len}, got T={T}"
 
-        x = self.token_in(x_onehot) + self.pos_emb[:, :T, :]
+        pos = torch.arange(T, device=x_ids.device).unsqueeze(0).expand(B, T)  # (B,T)
+        x = self.tok_emb(x_ids) + self.pos_emb(pos)  # (B,T,C)
 
         causal_mask = torch.triu(
             torch.ones(T, T, device=x.device, dtype=torch.bool),
@@ -156,5 +158,6 @@ class GPTDecoder(nn.Module):
             x = blk(x, causal_mask)
 
         x = self.ln_f(x)
-        logits = self.head(x)
-        return logits
+        logits = self.head(x)            # (B,T,V)
+        return logits[:, -1, :]
+
