@@ -19,12 +19,12 @@ class MultiHeadAttention(nn.Module):
         self.drop = nn.Dropout(dropout)
 
     def _split_heads(self, x: torch.Tensor) -> torch.Tensor:
-        b, t, _ = x.shape
-        return x.view(b, t, self.n_heads, self.d_head).transpose(1, 2)
+        batch_size, seq_len, _ = x.shape
+        return x.view(batch_size, seq_len, self.n_heads, self.d_head).transpose(1, 2)
 
     def _merge_heads(self, x: torch.Tensor) -> torch.Tensor:
-        b, h, t, dh = x.shape
-        return x.transpose(1, 2).contiguous().view(b, t, h * dh)
+        batch_size, h, seq_len, dh = x.shape
+        return x.transpose(1, 2).contiguous().view(batch_size, seq_len, h * dh)
 
     def forward(
         self,
